@@ -1,6 +1,6 @@
 module github.com/marco79423/websocket-demo-server
 
-go 1.14
+go 1.16
 
 require (
 	github.com/gin-gonic/gin v1.7.4
