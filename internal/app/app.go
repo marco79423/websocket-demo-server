@@ -5,8 +5,9 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"github.com/marco79423/websocket-demo-server/internal/config"
-	"github.com/marco79423/websocket-demo-server/internal/handler"
+	"github.com/marco79423/websocket-demo-server/internal/controller"
 	"github.com/marco79423/websocket-demo-server/internal/utils"
 	"golang.org/x/xerrors"
 )
@@ -52,7 +53,7 @@ func (app *app) Start() error {
 	// 初始化
 	app.httpServer = &http.Server{
 		Addr:    conf.GetAddress(),
-		Handler: handler.NewRouterHandler(app.ctx),
+		Handler: app.getRouteHandler(),
 	}
 
 	// 啟動
@@ -87,6 +88,25 @@ func (app *app) Stop() error {
 	logger.Info(app.ctx, "主應用已關閉")
 
 	return nil
+}
+
+func (app *app) getRouteHandler() http.Handler {
+	handler := gin.New()
+	handler.Use(
+		gin.Recovery(),
+
+		// 注入基本資訊
+		func(ginCtx *gin.Context) {
+			ginCtx.Set("logger", utils.GetCtxLogger(app.ctx))
+			ginCtx.Set("config", utils.GetCtxConfig(app.ctx))
+		},
+	)
+
+	handler.GET("/echo", controller.NewEchoController().Handle)
+	handler.GET("/jessigod", controller.NewJessigodController().Handle)
+	handler.GET("/nabigod", controller.NewNabigodController().Handle)
+
+	return handler
 }
 
 // 建立主應用所需的 Context (讀取設定、建立 Logger ...)
