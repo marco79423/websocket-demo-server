@@ -30,13 +30,7 @@ func (ctrl *echoController) Handle(ctx *gin.Context) {
 		logger.Debug(ctx, "升級為 Websocket 失敗: %w", err)
 		return
 	}
-	defer func() {
-		err := ws.Close()
-		if err != nil {
-			logger.Debug(ctx, "關閉 Websocket 失敗: %w", err)
-			return
-		}
-	}()
+	defer ws.Close()
 
 	for {
 		messageType, message, err := ws.ReadMessage()

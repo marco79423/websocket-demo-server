@@ -3,13 +3,14 @@ package controller
 import (
 	"encoding/json"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/marco79423/websocket-demo-server/internal/utils"
+	"golang.org/x/xerrors"
 )
 
 func NewJessigodController() IController {
@@ -34,61 +35,70 @@ func (ctrl *jessigodController) Handle(ctx *gin.Context) {
 		logger.Debug(ctx, "升級為 Websocket 失敗: %w", err)
 		return
 	}
-	defer func() {
-		err := ws.Close()
-		if err != nil {
-			logger.Debug(ctx, "關閉 Websocket 失敗: %w", err)
-			return
+	defer ws.Close()
+
+	go func() {
+		for {
+			saying, err := ctrl.getRandomSaying()
+			if err != nil {
+				logger.Debug(ctx, "取得名言請求失敗: %w", err)
+				break
+			}
+
+			ws.SetWriteDeadline(time.Now().Add(1 * time.Second))
+			if err := ws.WriteMessage(websocket.TextMessage, []byte(saying)); err != nil {
+				logger.Debug(ctx, "寫入 Websocket 訊息失敗: %w", err)
+				break
+			}
+
+			logger.Debug(ctx, "回傳訊息 %v", saying)
+			time.Sleep(3 * time.Second)
 		}
 	}()
 
-	client := &http.Client{}
 	for {
-		req, err := http.NewRequest("GET", "https://jessigod.marco79423.net/api/sayings", nil)
+		_, _, err := ws.ReadMessage()
 		if err != nil {
-			logger.Debug(ctx, "取得名言請求失敗: %w", err)
+			logger.Debug(ctx, "讀取 Websocket 訊息失敗: %w", err)
 			break
 		}
-		req.Header.Set("Authorization", "Jessi bac")
-		req.URL.Query().Add("origin", "西卡姐")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			logger.Debug(ctx, "取得名言失敗: %w", err)
-			break
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			logger.Debug(ctx, "取得名言失敗: 狀態碼為 %v", resp.StatusCode)
-			break
-		}
-
-		rawData, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			logger.Debug(ctx, "解析回傳內容失敗: %w", err)
-			break
-		}
-
-		var jsonData struct {
-			Data []struct {
-				Content string `json:"content"`
-			} `json:"data"`
-		}
-
-		if err := json.Unmarshal(rawData, &jsonData); err != nil {
-			logger.Debug(ctx, "解析 JSON 內容失敗: %w", err)
-			break
-		}
-
-		saying := jsonData.Data[rand.Intn(len(jsonData.Data))].Content
-		err = ws.WriteMessage(websocket.TextMessage, []byte(saying))
-		if err != nil {
-			logger.Debug(ctx, "寫入 Websocket 訊息失敗: %w", err)
-			break
-		}
-
-		logger.Debug(ctx, "回傳訊息 %v", saying)
-
-		time.Sleep(3 * time.Second)
 	}
+}
+
+func (ctrl *jessigodController) getRandomSaying() (string, error) {
+	req, err := http.NewRequest("GET", "https://jessigod.marco79423.net/api/random-saying", nil)
+	if err != nil {
+		return "", xerrors.Errorf("取得隨機名言失敗: %w", err)
+	}
+
+	params := url.Values{}
+	params.Add("origin", "西卡姐")
+	req.URL.RawQuery = params.Encode()
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", xerrors.Errorf("取得隨機名言失敗: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", xerrors.Errorf("取得隨機名言失敗: 狀態碼為 %v", resp.StatusCode)
+	}
+
+	rawData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", xerrors.Errorf("取得隨機名言失敗: %w", err)
+	}
+
+	var jsonData struct {
+		Data struct {
+			Content string `json:"content"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(rawData, &jsonData); err != nil {
+		return "", xerrors.Errorf("取得隨機名言失敗: %w", err)
+	}
+
+	return jsonData.Data.Content, nil
 }
