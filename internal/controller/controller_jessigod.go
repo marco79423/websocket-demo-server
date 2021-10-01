@@ -38,6 +38,12 @@ func (ctrl *jessigodController) Handle(ctx *gin.Context) {
 	defer ws.Close()
 
 	go func() {
+		ws.SetWriteDeadline(time.Now().Add(1 * time.Second))
+		if err := ws.WriteMessage(websocket.TextMessage, []byte("我是西卡神，我只想說－－我是最強而且還很愛笑的高嶺之花！")); err != nil {
+			logger.Debug(ctx, "寫入 Websocket 訊息失敗: %w", err)
+		}
+		time.Sleep(3 * time.Second)
+
 		for {
 			saying, err := ctrl.getRandomSaying()
 			if err != nil {
